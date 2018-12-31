@@ -1,0 +1,219 @@
+
+#include "ros/ros.h"
+#include "std_msgs/Float32.h"
+
+#define BCM2708_PERI_BASE        0x3F000000
+#define GPIO_BASE                (BCM2708_PERI_BASE + 0x200000) /* GPIO controller */
+
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <ncurses.h>
+
+#define PAGE_SIZE (4*1024)
+#define BLOCK_SIZE (4*1024)
+
+int  mem_fd;
+void *gpio_map;
+
+// I/O access
+volatile unsigned *gpio;
+
+// GPIO setup macros. Always use INP_GPIO(x) before using OUT_GPIO(x) or SET_GPIO_ALT(x,y)
+#define INP_GPIO(g) *(gpio+((g)/10)) &= ~(7<<(((g)%10)*3))
+#define OUT_GPIO(g) *(gpio+((g)/10)) |=  (1<<(((g)%10)*3))
+#define SET_GPIO_ALT(g,a) *(gpio+(((g)/10))) |= (((a)<=3?(a)+4:(a)==4?3:2)<<(((g)%10)*3))
+
+#define GPIO_SET *(gpio+7)  // sets   bits which are 1 ignores bits which are 0
+#define GPIO_CLR *(gpio+10) // clears bits which are 1 ignores bits which are 0
+
+#define GET_GPIO(g) (*(gpio+13)&(1<<g)) // 0 if LOW, (1<<g) if HIGH
+
+#define GPIO_PULL *(gpio+37) // Pull up/pull down
+#define GPIO_PULLCLK0 *(gpio+38) // Pull up/pull down clock
+
+#define IN1 	0x400 	//10
+#define IN2 	0x200	//9
+#define IN3 	0x800	//11
+#define IN4 	0x100	//8
+
+//
+// Set up a memory regions to access GPIO
+//
+void setup_io()
+{
+	/* open /dev/mem */
+	if ((mem_fd = open("/dev/mem", O_RDWR|O_SYNC) ) < 0) {
+		printf("can't open /dev/mem \n");
+		exit(-1);
+	}
+
+	/* mmap GPIO */
+	gpio_map = mmap(
+		NULL,             //Any adddress in our space will do
+		BLOCK_SIZE,       //Map length
+		PROT_READ|PROT_WRITE,// Enable reading & writting to mapped memory
+		MAP_SHARED,       //Shared with other processes
+		mem_fd,           //File to map
+		GPIO_BASE         //Offset to GPIO peripheral
+	);
+
+	close(mem_fd); //No need to keep mem_fd open after mmap
+
+	if (gpio_map == MAP_FAILED) {
+		printf("mmap error %d\n", (int)gpio_map);//errno also set!
+		exit(-1);
+	}
+
+	// Always use volatile pointer!
+	gpio = (volatile unsigned *)gpio_map;
+
+
+} // setup_io
+
+void *set_motor_r(void *x_void_ptr) {
+
+	int *x_ptr = (int *)x_void_ptr;
+	int val = *x_ptr;
+
+	for(int rep = 0; rep < 199; rep++){
+		GPIO_SET = IN3;
+		GPIO_CLR = IN4;
+		usleep(val*10);
+		GPIO_CLR = IN3;
+		GPIO_CLR = IN4;
+		usleep((100-val)*10);
+	}
+
+	return NULL;
+}
+
+void *set_motor_rn(void *x_void_ptr) {
+
+	int *x_ptr = (int *)x_void_ptr;
+	int val = *x_ptr;
+
+	for(int rep = 0; rep < 199; rep++){
+		GPIO_CLR = IN3;
+		GPIO_SET = IN4;
+		usleep(val*10);
+		GPIO_CLR = IN3;
+		GPIO_CLR = IN4;
+		usleep((100-val)*10);
+	}
+
+	return NULL;
+}
+
+void *set_motor_l(void *x_void_ptr) {
+
+	int *x_ptr = (int *)x_void_ptr;
+	int val = *x_ptr;
+
+	for(int rep = 0; rep < 100; rep++){
+		GPIO_SET = IN1;
+		GPIO_CLR = IN2;
+		usleep(val*10);
+		GPIO_CLR = IN1;
+		GPIO_CLR = IN2;
+		usleep((100-val)*10);
+	}
+
+	return NULL;
+}
+
+void *set_motor_ln(void *x_void_ptr) {
+
+	int *x_ptr = (int *)x_void_ptr;
+	int val = *x_ptr;
+
+	for(int rep = 0; rep < 199; rep++){
+		GPIO_CLR = IN1;
+		GPIO_SET = IN2;
+		usleep(val*10);
+		GPIO_CLR = IN1;
+		GPIO_CLR = IN2;
+		usleep((100-val)*10);
+	}
+
+	return NULL;
+}
+
+
+class MotorDriver
+{
+private:
+	ros::NodeHandle n;
+	ros::Subscriber rwheel_sub;
+	ros::Subscriber lwheel_sub;
+
+public:
+	MotorDriver();
+	void rwheel_callback(const std_msgs::Float32::ConstPtr& msg);
+	void lwheel_callback(const std_msgs::Float32::ConstPtr& msg);
+
+};
+
+MotorDriver::MotorDriver() {
+	rwheel_sub = n.subscribe("rwheel_angular_vel_motor", 1, &MotorDriver::rwheel_callback, this);
+	lwheel_sub = n.subscribe("lwheel_angular_vel_motor", 1, &MotorDriver::lwheel_callback, this);
+}
+
+void MotorDriver::rwheel_callback(const std_msgs::Float32::ConstPtr& msg){
+	int duty;
+	pthread_t set_motor_r_thread;
+	pthread_t set_motor_rn_thread;
+
+	duty = (int)msg->data;
+
+	if(duty > 0){
+		pthread_create(&set_motor_r_thread, NULL, set_motor_r, &duty);
+		//pthread_join(set_motor_r_thread, NULL);
+	}
+	if(duty < 0){
+		duty = -duty;
+		pthread_create(&set_motor_rn_thread, NULL, set_motor_rn, &duty);
+		//pthread_join(set_motor_rn_thread, NULL); 
+	}
+
+}
+
+void MotorDriver::lwheel_callback(const std_msgs::Float32::ConstPtr& msg){
+	int duty;
+	pthread_t set_motor_l_thread;
+	pthread_t set_motor_ln_thread;
+
+	duty = (int)msg->data;
+
+	if(duty > 0){
+		pthread_create(&set_motor_l_thread, NULL, set_motor_l, &duty);
+		//pthread_join(set_motor_l_thread, NULL);
+	}
+	if(duty < 0){
+		duty = -duty;
+		pthread_create(&set_motor_ln_thread, NULL, set_motor_ln, &duty);
+		//pthread_join(set_motor_ln_thread, NULL);
+	}
+}
+
+int main(int argc, char **argv)
+{
+	setup_io();
+	// Set GPIO pins 7-11 to output
+	for (int g=7; g<=11; g++) {
+		INP_GPIO(g); // must use INP_GPIO before we can use OUT_GPIO
+		OUT_GPIO(g);
+	}
+	GPIO_CLR = 0xf00;
+
+	ros::init(argc, argv, "motor_driver");
+
+	MotorDriver md;
+
+	ros::spin();
+
+	return 0;
+}

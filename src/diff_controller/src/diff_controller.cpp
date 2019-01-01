@@ -28,12 +28,12 @@ public:
 };
 
 DiffController::DiffController(){
-	n.param<float>("wheel_distance", L, 0.13);
-	n.param<float>("wheel_radius", R, 0.03);
-	n.param<float>("motor_cmd_max", motor_cmd_max, 1000);
-	n.param<float>("motor_cmd_min", motor_cmd_min, 0);
-	n.param<float>("motor_max_vel", motor_max_vel, 1.00); 
-	n.param<float>("motor_min_vel", motor_min_vel, 0.00);
+	n.param<float>("/diff_controller/wheel_distance", L, 0.13);
+	n.param<float>("/diff_controller/wheel_radius", R, 0.03);
+	n.param<float>("/diff_controller/motor_cmd_max", motor_cmd_max, 1000);
+	n.param<float>("/diff_controller/motor_cmd_min", motor_cmd_min, 0);
+	n.param<float>("/diff_controller/motor_max_vel", motor_max_vel, 1.00); 
+	n.param<float>("/diff_controller/motor_min_vel", motor_min_vel, 0.00);
 
 	cmd_vel_sub = n.subscribe("cmd_vel", 1, &DiffController::cmd_vel_callback, this);
 	rwheel_motor_pub = n.advertise<std_msgs::Float32>("rwheel_angular_vel_motor", 10);

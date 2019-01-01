@@ -125,9 +125,9 @@ public:
 };
 
 MotorDriver::MotorDriver() {
-	n.param<float>("Kp", Kp, 1.0);
-	n.param<float>("Ki", Kp, 1.0);
-	n.param<float>("Kd", Kp, 1.0);
+	n.param<float>("/motor_driver/Kp", Kp, 1.0);
+	n.param<float>("/motor_driver/Ki", Ki, 1.0);
+	n.param<float>("/motor_driver/Kd", Kd, 1.0);
 	rwheel_pid.len = 0;
 	lwheel_pid.len = 0;
 	duty_r = 0;
@@ -216,7 +216,7 @@ int MotorDriver::pid_control(PID& wheel_pid, int target, int state){
 	float control_signal = Kp*wheel_pid.error_curr + Ki*wheel_pid.integral + Kd*wheel_pid.derivative;
 	float target_new = (float)target + control_signal;
 
-	ROS_INFO("control %f %f %f = %f <- %d", wheel_pid.error_curr, wheel_pid.integral , wheel_pid.derivative, target_new, target);
+	ROS_INFO("control %f %f %f = %f <- %d", Kp, Ki , Kd, target_new, target);
 	
 	wheel_pid.time_prev = wheel_pid.time_curr;
 	wheel_pid.len++;

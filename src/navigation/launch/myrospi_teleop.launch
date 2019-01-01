@@ -1,5 +1,15 @@
 <?xml version="1.0"?>
 <launch>
+
+  <node pkg="diff_controller" type="diff_controller_node" name="diff_controller">
+    <param name="motor_max_vel" value="1.00" />
+    <param name="motor_min_vel" value="0.00" />
+    <param name="motor_cmd_max" value="1000" />
+    <param name="motor_cmd_min" value="0" />
+    <param name="wheel_radius" value="0.03" />
+    <param name="wheel_distance" value="0.13" />
+  </node>
+
   <!-- turtlebot_teleop_key already has its own built in velocity smoother -->
   <node pkg="turtlebot_teleop" type="turtlebot_teleop_key" name="turtlebot_teleop_keyboard"  output="screen">
     <!--param name="scale_linear" value="0.5" type="double"/-->

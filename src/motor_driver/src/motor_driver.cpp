@@ -125,9 +125,9 @@ public:
 };
 
 MotorDriver::MotorDriver() {
-	Kp = 10.0;
-	Ki = 10.0;
-	Kd = 0.1;
+	n.param<float>("Kp", Kp, 1.0);
+	n.param<float>("Ki", Kp, 1.0);
+	n.param<float>("Kd", Kp, 1.0);
 	rwheel_pid.len = 0;
 	lwheel_pid.len = 0;
 	duty_r = 0;

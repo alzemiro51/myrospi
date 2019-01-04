@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<launch>
+
+  <node pkg="motor_driver" type="motor_driver_node" name="motor_driver" output="screen">
+    <param name="Kp" value="10.0" />
+    <param name="Ki" value="10.0" />
+    <param name="Kd" value="0.1" />
+    <param name="pid_on" value="False" />
+  </node>
+</launch>
+

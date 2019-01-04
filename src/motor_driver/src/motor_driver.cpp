@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <unistd.h>
+#include <time.h>
 #include <thread>
 
 #define PAGE_SIZE (4*1024)
@@ -77,6 +78,20 @@ void setup_io()
 
 } // setup_io
 
+struct PID {
+	ros::Time time_curr;
+	ros::Time time_prev;
+	float dt;
+
+	float error_curr;
+	float error_prev;
+	float integral;
+	float integral_prev;
+	float derivative;
+
+	int len;
+};
+
 class MotorDriver
 {
 private:
@@ -84,26 +99,61 @@ private:
 	ros::Subscriber rwheel_sub;
 	ros::Subscriber lwheel_sub;
 	int duty_r, duty_l;
+	int target_duty_r, target_duty_l;
+	int state_duty_r, state_duty_l;
+	float Kp, Ki, Kd;
+	bool pid_on;
+	int delayr[10];
+	int dr;
+	int delayl[10];
+	int dl;
 
 	std::thread rwheel_motor_t;
 	std::thread lwheel_motor_t;
 
+	PID rwheel_pid;
+	PID lwheel_pid;
+
 public:
 	MotorDriver();
+	~MotorDriver();
 	void set_motor_r();
 	void set_motor_l();
+	int pid_control(PID& wheel_pid, int target, int state);
 	void rwheel_callback(const std_msgs::Float32::ConstPtr& msg);
 	void lwheel_callback(const std_msgs::Float32::ConstPtr& msg);
 
 };
 
 MotorDriver::MotorDriver() {
+	n.param<float>("/motor_driver/Kp", Kp, 1.0);
+	n.param<float>("/motor_driver/Ki", Ki, 1.0);
+	n.param<float>("/motor_driver/Kd", Kd, 1.0);
+	n.param<bool>("/motor_driver/pid_on", pid_on, true);
+	rwheel_pid.len = 0;
+	lwheel_pid.len = 0;
 	duty_r = 0;
 	duty_l = 0;
 	rwheel_sub = n.subscribe("rwheel_angular_vel_motor", 1, &MotorDriver::rwheel_callback, this);
 	lwheel_sub = n.subscribe("lwheel_angular_vel_motor", 1, &MotorDriver::lwheel_callback, this);
 	rwheel_motor_t = std::thread(&MotorDriver::set_motor_r, this);
 	lwheel_motor_t = std::thread(&MotorDriver::set_motor_l, this);
+
+	dr = 0;
+	dl = 0;
+	for (int i = 0; i < 10; i++) delayr[i] = 0;
+	for (int i = 0; i < 10; i++) delayl[i] = 0;
+
+	if (pid_on) std::cout << "pid_on\n";
+}
+
+MotorDriver::~MotorDriver(void) {
+	duty_r = 0;
+	duty_l = 0;
+	target_duty_r = 0;
+	target_duty_l = 0;
+	ROS_INFO("Finishing process");
+	usleep(50000);
 }
 
 void MotorDriver::set_motor_r(){
@@ -130,7 +180,7 @@ void MotorDriver::set_motor_l(){
 	int gpio_clr;
 
 	while(1){
-		if(duty_r == 0)
+		if(duty_l == 0)
 			gpio_set = 0;
 		else if(duty_l > 0)
 			gpio_set = IN1;
@@ -144,19 +194,79 @@ void MotorDriver::set_motor_l(){
 	}	
 }
 
+int MotorDriver::pid_control(PID& wheel_pid, int target, int state){
+
+	if (wheel_pid.len == 0){
+		wheel_pid.time_prev = ros::Time::now();
+		wheel_pid.integral_prev = 0;
+		wheel_pid.derivative = 0;
+		wheel_pid.integral = 0;
+		wheel_pid.error_prev = 0;
+		wheel_pid.error_curr = 0;
+	}
+	
+	wheel_pid.time_curr = ros::Time::now();
+
+	// PID control
+	wheel_pid.dt = (wheel_pid.time_curr - wheel_pid.time_prev).toSec();
+	if (wheel_pid.dt == 0)
+		return 0;
+
+	wheel_pid.error_curr = target - state;
+	wheel_pid.integral = wheel_pid.integral_prev + wheel_pid.error_curr * wheel_pid.dt;
+	wheel_pid.derivative = (wheel_pid.error_curr - wheel_pid.error_prev)/wheel_pid.dt;
+
+	wheel_pid.error_prev = wheel_pid.error_curr;
+	float control_signal = Kp*wheel_pid.error_curr + Ki*wheel_pid.integral + Kd*wheel_pid.derivative;
+	float target_new = (float)target + control_signal;
+
+	ROS_INFO("control %f %f %f = %f <- %d", Kp, Ki , Kd, target_new, target);
+	
+	wheel_pid.time_prev = wheel_pid.time_curr;
+	wheel_pid.len++;
+	if (target_new < 0 && target > 0) return target;
+	if (target_new > 0 && target < 0) return target;
+	if (target_new > 1000) return 1000;
+	if (target_new < -1000) return -1000;
+	return (int)target_new;
+}
+
 void MotorDriver::rwheel_callback(const std_msgs::Float32::ConstPtr& msg){
 
-	duty_r = (int)msg->data;
+	target_duty_r = (int)msg->data;
 
+	if (pid_on){
+		//test code
+		delayr[dr%5] = target_duty_r;
+		state_duty_r = delayr[(dr+4)%5];
+		dr++;
+
+		duty_r = pid_control(rwheel_pid, target_duty_r, state_duty_r);
+	}
+	else
+		duty_r = target_duty_r;
 }
 
 void MotorDriver::lwheel_callback(const std_msgs::Float32::ConstPtr& msg){
 
-	duty_l = (int)msg->data;
+	target_duty_l = (int)msg->data;
+	
+	if (pid_on){
+		//test code
+		delayl[dl%10] = target_duty_l;
+		state_duty_l = delayl[(dl+9)%10];
+		dl++;
+
+		duty_l = pid_control(lwheel_pid, target_duty_l, state_duty_l);
+	}
+	else
+		duty_l = target_duty_l;
 }
 
 int main(int argc, char **argv)
 {
+	int gpio_sim[20];
+	gpio = (unsigned int*)gpio_sim;
 	setup_io();
 	// Set GPIO pins 7-11 to output
 	for (int g=7; g<=11; g++) {

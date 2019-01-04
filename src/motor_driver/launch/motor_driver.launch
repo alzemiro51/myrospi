@@ -5,6 +5,7 @@
     <param name="Kp" value="10.0" />
     <param name="Ki" value="10.0" />
     <param name="Kd" value="0.1" />
+    <param name="pid_on" value="False" />
   </node>
 </launch>
 

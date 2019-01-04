@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<launch>
+
+  <node pkg="diff_controller" type="diff_controller_node" name="diff_controller">
+    <param name="motor_max_vel" value="1.00" />
+    <param name="motor_min_vel" value="0.00" />
+    <param name="motor_cmd_max" value="1000" />
+    <param name="motor_cmd_min" value="0" />
+    <param name="wheel_radius" value="0.03" />
+    <param name="wheel_distance" value="0.13" />
+  </node>
+
+  <node pkg="navigation" type="joystick_node" name="joystick_control">
+    <param name="scale_angular" value="3.0"/>
+    <param name="scale_linear" value="0.5"/>
+  </node>
+
+</launch>
+

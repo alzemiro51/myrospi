@@ -102,6 +102,7 @@ private:
 	int target_duty_r, target_duty_l;
 	int state_duty_r, state_duty_l;
 	float Kp, Ki, Kd;
+	bool pid_on;
 	int delayr[10];
 	int dr;
 	int delayl[10];
@@ -128,6 +129,7 @@ MotorDriver::MotorDriver() {
 	n.param<float>("/motor_driver/Kp", Kp, 1.0);
 	n.param<float>("/motor_driver/Ki", Ki, 1.0);
 	n.param<float>("/motor_driver/Kd", Kd, 1.0);
+	n.param<bool>("/motor_driver/pid_on", pid_on, true);
 	rwheel_pid.len = 0;
 	lwheel_pid.len = 0;
 	duty_r = 0;
@@ -141,6 +143,8 @@ MotorDriver::MotorDriver() {
 	dl = 0;
 	for (int i = 0; i < 10; i++) delayr[i] = 0;
 	for (int i = 0; i < 10; i++) delayl[i] = 0;
+
+	if (pid_on) std::cout << "pid_on\n";
 }
 
 MotorDriver::~MotorDriver(void) {
@@ -231,24 +235,32 @@ void MotorDriver::rwheel_callback(const std_msgs::Float32::ConstPtr& msg){
 
 	target_duty_r = (int)msg->data;
 
-	//test code
-	delayr[dr%5] = target_duty_r;
-	state_duty_r = delayr[(dr+4)%5];
-	dr++;
+	if (pid_on){
+		//test code
+		delayr[dr%5] = target_duty_r;
+		state_duty_r = delayr[(dr+4)%5];
+		dr++;
 
-	duty_r = pid_control(rwheel_pid, target_duty_r, state_duty_r);
+		duty_r = pid_control(rwheel_pid, target_duty_r, state_duty_r);
+	}
+	else
+		duty_r = target_duty_r;
 }
 
 void MotorDriver::lwheel_callback(const std_msgs::Float32::ConstPtr& msg){
 
 	target_duty_l = (int)msg->data;
 	
-	//test code
-	delayl[dl%10] = target_duty_l;
-	state_duty_l = delayl[(dl+9)%10];
-	dl++;
+	if (pid_on){
+		//test code
+		delayl[dl%10] = target_duty_l;
+		state_duty_l = delayl[(dl+9)%10];
+		dl++;
 
-	duty_l = pid_control(lwheel_pid, target_duty_l, state_duty_l);
+		duty_l = pid_control(lwheel_pid, target_duty_l, state_duty_l);
+	}
+	else
+		duty_l = target_duty_l;
 }
 
 int main(int argc, char **argv)
